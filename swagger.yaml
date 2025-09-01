@@ -1,0 +1,672 @@
+openapi: 3.0.3
+info:
+  title: KPI Development API
+  description: API for managing KPI (Key Performance Indicator) development with file attachments and analytics
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@kpiproject.com
+
+servers:
+  - url: http://localhost:8081
+    description: Development server
+  - url: https://api.kpiproject.com
+    description: Production server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from authentication endpoint
+
+  schemas:
+    KPIDevelopment:
+      type: object
+      required:
+        - goal
+        - description
+        - due_date
+      properties:
+        id:
+          type: string
+          format: objectid
+          description: MongoDB ObjectID
+          example: "507f1f77bcf86cd799439011"
+        goal:
+          type: string
+          description: The KPI goal description
+          example: "Increase customer satisfaction by 15%"
+        description:
+          type: string
+          description: Detailed description of the KPI
+          example: "Improve customer satisfaction scores through better service quality"
+        due_date:
+          type: string
+          format: date-time
+          description: Due date for achieving the KPI
+          example: "2024-12-31T23:59:59Z"
+        actual_percent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Current completion percentage
+          example: 75
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        is_deleted:
+          type: boolean
+          description: Soft delete flag
+          example: false
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+
+    Attachment:
+      type: object
+      properties:
+        file_id:
+          type: string
+          format: objectid
+          description: GridFS file ID
+          example: "507f1f77bcf86cd799439012"
+        filename:
+          type: string
+          description: Original filename
+          example: "kpi_report.pdf"
+
+    Metadata:
+      type: object
+      properties:
+        created_by:
+          type: string
+          description: Username who created the record
+          example: "john_doe"
+        updated_by:
+          type: string
+          description: Username who last updated the record
+          example: "jane_smith"
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+          example: "2024-01-15T10:30:00Z"
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+          example: "2024-01-20T14:45:00Z"
+
+    KPIPerformanceStats:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: Status category
+          enum: [Completed, "On Track", "At Risk", Behind, "Not Started"]
+          example: "On Track"
+        count:
+          type: integer
+          description: Number of KPIs in this status
+          example: 15
+        avg_completion:
+          type: number
+          format: float
+          description: Average completion percentage
+          example: 67.5
+        total_attachments:
+          type: integer
+          description: Total number of attachments for KPIs in this status
+          example: 25
+        avg_days_until_due:
+          type: number
+          format: float
+          description: Average days until due date
+          example: 45.2
+
+    TransferRequest:
+      type: object
+      required:
+        - from_kpi_id
+        - to_kpi_id
+        - file_id
+      properties:
+        from_kpi_id:
+          type: string
+          format: objectid
+          description: Source KPI ID
+          example: "507f1f77bcf86cd799439011"
+        to_kpi_id:
+          type: string
+          format: objectid
+          description: Destination KPI ID
+          example: "507f1f77bcf86cd799439013"
+        file_id:
+          type: string
+          format: objectid
+          description: File ID to transfer
+          example: "507f1f77bcf86cd799439012"
+
+    MessageResponse:
+      type: object
+      properties:
+        status_code:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: "Operation completed successfully"
+
+    ValidationResponse:
+      type: object
+      properties:
+        status_code:
+          type: integer
+          example: 400
+        errors:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            goal: "required"
+            due_date: "required"
+
+    DataResponse:
+      type: object
+      properties:
+        status_code:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: "Data retrieved successfully"
+        data:
+          oneOf:
+            - $ref: '#/components/schemas/KPIDevelopment'
+            - type: array
+              items:
+                $ref: '#/components/schemas/KPIDevelopment'
+            - $ref: '#/components/schemas/Attachment'
+            - type: array
+              items:
+                $ref: '#/components/schemas/KPIPerformanceStats'
+
+    Error:
+      type: object
+      properties:
+        status_code:
+          type: integer
+        message:
+          type: string
+
+security:
+  - BearerAuth: []
+
+paths:
+  /api/kpi:
+    post:
+      summary: Create a new KPI
+      description: Creates a new KPI development record
+      tags:
+        - KPI Management
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KPIDevelopment'
+            example:
+              goal: "Increase customer satisfaction by 15%"
+              description: "Improve customer satisfaction scores through better service quality"
+              due_date: "2024-12-31T23:59:59Z"
+              actual_percent: 0
+      responses:
+        '201':
+          description: KPI created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      summary: Get all KPIs
+      description: Retrieves all KPI development records
+      tags:
+        - KPI Management
+      responses:
+        '200':
+          description: KPIs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/kpi/{id}:
+    get:
+      summary: Get KPI by ID
+      description: Retrieves a specific KPI by its ID
+      tags:
+        - KPI Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectid
+          description: KPI ID
+          example: "507f1f77bcf86cd799439011"
+      responses:
+        '200':
+          description: KPI retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataResponse'
+        '400':
+          description: Invalid KPI ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: KPI not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      summary: Update KPI
+      description: Updates an existing KPI record
+      tags:
+        - KPI Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectid
+          description: KPI ID
+          example: "507f1f77bcf86cd799439011"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KPIDevelopment'
+            example:
+              goal: "Increase customer satisfaction by 20%"
+              description: "Updated description"
+              actual_percent: 50
+      responses:
+        '200':
+          description: KPI updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: KPI not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      summary: Delete KPI (Soft Delete)
+      description: Performs a soft delete on the KPI record
+      tags:
+        - KPI Management
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectid
+          description: KPI ID
+          example: "507f1f77bcf86cd799439011"
+      responses:
+        '200':
+          description: KPI deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid KPI ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: KPI not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/kpi/{id}/attachments:
+    post:
+      summary: Upload file attachment to KPI
+      description: Uploads a file attachment to a specific KPI using GridFS
+      tags:
+        - File Attachments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectid
+          description: KPI ID
+          example: "507f1f77bcf86cd799439011"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload (max 10MB)
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataResponse'
+        '400':
+          description: Bad request (invalid file, size too large, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: KPI not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/kpi/attachments/{fileId}/download:
+    get:
+      summary: Download file attachment
+      description: Downloads a file attachment by its file ID
+      tags:
+        - File Attachments
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectid
+          description: GridFS file ID
+          example: "507f1f77bcf86cd799439012"
+      responses:
+        '200':
+          description: File downloaded successfully
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+              description: Attachment with filename
+              example: 'attachment; filename="document.pdf"'
+            Content-Type:
+              schema:
+                type: string
+              description: File MIME type
+              example: "application/pdf"
+            Content-Length:
+              schema:
+                type: integer
+              description: File size in bytes
+        '400':
+          description: Invalid file ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/kpi/{id}/attachments/{fileId}:
+    delete:
+      summary: Delete file attachment
+      description: Deletes a file attachment from both KPI record and GridFS
+      tags:
+        - File Attachments
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectid
+          description: KPI ID
+          example: "507f1f77bcf86cd799439011"
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: objectid
+          description: GridFS file ID
+          example: "507f1f77bcf86cd799439012"
+      responses:
+        '200':
+          description: Attachment deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid ID format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: KPI or attachment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/kpi/attachments/transfer:
+    post:
+      summary: Transfer attachment between KPIs
+      description: Transfers a file attachment from one KPI to another using transaction
+      tags:
+        - File Attachments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransferRequest'
+            example:
+              from_kpi_id: "507f1f77bcf86cd799439011"
+              to_kpi_id: "507f1f77bcf86cd799439013"
+              file_id: "507f1f77bcf86cd799439012"
+      responses:
+        '200':
+          description: Attachment transferred successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataResponse'
+              example:
+                status_code: 200
+                message: "Attachment transferred successfully"
+                data:
+                  from_kpi_id: "507f1f77bcf86cd799439011"
+                  to_kpi_id: "507f1f77bcf86cd799439013"
+                  file_id: "507f1f77bcf86cd799439012"
+                  transferred_at: "2024-01-20T15:30:00Z"
+        '400':
+          description: Bad request (invalid IDs, same source/destination, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: KPI or attachment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Transaction failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/kpi/analytics/performance:
+    get:
+      summary: Get KPI performance statistics
+      description: Retrieves aggregated performance statistics for all KPIs grouped by completion status
+      tags:
+        - Analytics
+      responses:
+        '200':
+          description: Performance statistics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataResponse'
+              example:
+                status_code: 200
+                message: "KPI performance statistics retrieved successfully"
+                data:
+                  - _id: "On Track"
+                    count: 15
+                    avg_completion: 67.5
+                    total_attachments: 25
+                    avg_days_until_due: 45.2
+                  - _id: "Completed"
+                    count: 8
+                    avg_completion: 100.0
+                    total_attachments: 12
+                    avg_days_until_due: -5.3
+                  - _id: "At Risk"
+                    count: 5
+                    avg_completion: 35.0
+                    total_attachments: 8
+                    avg_days_until_due: 15.7
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+tags:
+  - name: KPI Management
+    description: Operations for managing KPI development records
+  - name: File Attachments
+    description: Operations for managing file attachments to KPIs
+  - name: Analytics
+    description: Analytics and reporting endpoints for KPI performance
